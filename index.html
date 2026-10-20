@@ -2117,6 +2117,7 @@ function errText(code, message){
 }
 function errHint(code){
   if (code === 1101 || code === 1105) return '到 InfiniSynapse → 设置 → API Key Management 重新创建，再粘到左侧。';
+  if (code === 500) return '能连上、Key 也通过了鉴权，卡住的是平台的 AI 资源池。到控制台看「额度 / 计算资源」，或隔几分钟再试。';
   if (code === 402 || code === 403) return '可能是额度或权限问题，请到控制台确认账户额度。';
   return '先点「测试连接」确认 Key 与网络，再重试；也可切到另一个地区节点。';
 }
@@ -2386,12 +2387,18 @@ function failAI(msg, code){
   runState.finished = true;
   cleanupRun();
   setTag('none');
+  var busy = (code === 500);
   if (outEl){
-    outEl.innerHTML = '<div class="ai-error"><b>真 AI 调用失败</b><br>' + esc(msg) +
-      '<br><span class="ai-muted">' + esc(errHint(code)) + '</span></div>';
+    outEl.innerHTML = '<div class="ai-error">' +
+      '<b>' + (busy ? 'AI 引擎繁忙 · 平台侧原因，不是你操作错了' : '真 AI 调用失败') + '</b><br>' +
+      esc(msg) +
+      '<br><span class="ai-muted">' + esc(errHint(code)) + '</span>' +
+      '<br><button type="button" class="btn btn-sm btn-ghost" data-act="retry" style="margin-top:9px">再试一次</button>' +
+      '<span class="ai-muted" style="margin-left:8px">下方已用规则引擎给出同结构结论，可直接演示</span>' +
+      '</div>';
   }
   setStatus('err', '● ' + msg);
-  if (aiTag) { aiTag.className = 'out-tag'; aiTag.textContent = '调用失败'; }
+  if (aiTag) { aiTag.className = 'out-tag'; aiTag.textContent = busy ? '引擎繁忙' : '调用失败'; }
   if (wasRunning || !state.aiText){
     var t = ruleText();
     var act = $('actAi');
@@ -2547,7 +2554,14 @@ function testConn(){
     .then(function(txt){
       var j = null; try { j = JSON.parse(txt); } catch (e) {}
       var ms = Date.now() - t0;
-      if (j && j.code && j.code !== 200){ setKeyStatus('err', '● ' + errText(j.code, j.message)); return; }
+      if (j && j.code && j.code !== 200){
+        if (j.code === 500){
+          setKeyStatus('busy', '● 连得上、Key 也过了鉴权，但 AI 引擎忙（平台侧）· ' + ms + 'ms —— 稍后重试，或到控制台看额度 / 计算资源');
+        } else {
+          setKeyStatus('err', '● ' + errText(j.code, j.message));
+        }
+        return;
+      }
       if (j && j.ok === false){ setKeyStatus('err', '● 鉴权未通过'); return; }
       setKeyStatus('on', '● 连接正常 · ' + ms + 'ms · Key 可用，可以开始真 AI 分析');
     })
@@ -2638,6 +2652,10 @@ if (demoBtn) demoBtn.addEventListener('click', function(){
 if (stopBtn) stopBtn.addEventListener('click', stopAI);
 if (extraEl) extraEl.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); startAI(1); } });
 if (keyEl) keyEl.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); testConn(); } });
+if (outEl) outEl.addEventListener('click', function(e){
+  var b = e.target.closest && e.target.closest('[data-act="retry"]');
+  if (b){ startAI(1); }
+});
 if (regionEl){
   regionEl.addEventListener('change', function(){
     var v = regionEl.value;
